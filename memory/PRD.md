@@ -23,6 +23,7 @@
 - Submit → AI grading → per-question scores/feedback, total /100, verdict (FAIL / PASS / STRONG SHORTLIST)
 - Results history table + client-side CSV export
 - Admin JWT login (bcrypt + PyJWT, admin seeded from .env) protecting /history page and GET /api/results; logo icon removed from header (2026-07)
+- Admin history cleanup: per-row delete + Clear All (cascades to sessions), confirm dialogs (2026-07)
 - Tested: iteration_1 — 100% backend (18/18), 100% frontend flows
 
 ## Backlog
