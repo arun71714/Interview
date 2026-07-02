@@ -7,6 +7,185 @@ import { Play, Send, Loader2, Database, Code2, Braces, FileText, ChevronLeft, Ch
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const TYPE_ICON = { sql: Database, python: Code2, dax: Braces, text: FileText };
 const TYPE_LABEL = { sql: "SQL — executable", python: "Python — executable", dax: "DAX — AI graded", text: "Written answer — AI graded" };
+const PLACEHOLDER = {
+  sql: "-- Write your SQL here, then press Run",
+  python: "# Write pandas code here, then press Run\nimport pandas as pd",
+  dax: "// Write your DAX measure here (graded by AI)",
+  text: "Write your answer here...",
+};
+
+function navButtonClass(isCurrent, isDone) {
+  if (isCurrent) return "border-slate-950 ring-2 ring-slate-950 ring-offset-1";
+  if (isDone) return "border-slate-950 bg-slate-950 text-white";
+  return "border-slate-200 bg-slate-100 text-slate-500 hover:border-slate-950";
+}
+
+function editorClass(isCode) {
+  if (isCode) return "code-editor";
+  return "border border-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-950";
+}
+
+function formatSqlResult(data) {
+  if (!data.success) return `SQL ERROR: ${data.error}`;
+  if (!data.columns.length) return "Statement executed (no result set)";
+  const header = data.columns.join(" | ");
+  const rows = data.rows.map((row) => row.map((c) => (c === null ? "NULL" : c)).join(" | ")).join("\n");
+  return `${header}\n${"-".repeat(header.length)}\n${rows}\n(${data.row_count} rows)`;
+}
+
+function formatPyResult(data) {
+  if (data.error) return `ERROR: ${data.error}`;
+  const out = `${data.stdout || ""}${data.stderr ? `\nSTDERR:\n${data.stderr}` : ""}`.trim();
+  return out || "(no output)";
+}
+
+const LoadingScreen = () => (
+  <div className="flex min-h-screen items-center justify-center bg-white">
+    <Loader2 className="h-8 w-8 animate-spin" strokeWidth={1.5} />
+  </div>
+);
+
+const GradingScreen = () => (
+  <div className="flex min-h-screen flex-col items-center justify-center bg-white px-6">
+    <Loader2 className="h-10 w-10 animate-spin" strokeWidth={1.5} />
+    <h2 className="mt-6 font-heading text-2xl font-bold tracking-tight">AI grading in progress</h2>
+    <p className="mt-2 max-w-md text-center text-sm text-slate-600">
+      Claude is evaluating all 20 answers against the official answer key. This takes 30–90 seconds.
+    </p>
+  </div>
+);
+
+const TestHeader = ({ setTitle, candidateName, secondsLeft, onSubmit }) => {
+  const mins = Math.floor(secondsLeft / 60);
+  const secs = secondsLeft % 60;
+  return (
+    <header className="sticky top-0 z-50 border-b border-slate-950 bg-white">
+      <div className="flex items-center justify-between px-4 py-3 sm:px-6">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">{setTitle}</p>
+          <p className="text-sm font-bold">{candidateName}</p>
+        </div>
+        <div className="flex items-center gap-4">
+          <div data-testid="test-timer" className={`font-mono text-2xl font-bold ${secondsLeft < 300 ? "text-red-500" : "text-slate-950"}`}>
+            {String(mins).padStart(2, "0")}:{String(secs).padStart(2, "0")}
+          </div>
+          <button
+            data-testid="submit-test-button"
+            onClick={onSubmit}
+            className="flex items-center gap-2 bg-slate-950 px-4 py-2 text-xs font-bold uppercase tracking-[0.2em] text-white transition-all duration-150 hover:bg-slate-800"
+          >
+            <Send className="h-4 w-4" strokeWidth={1.5} /> Submit
+          </button>
+        </div>
+      </div>
+    </header>
+  );
+};
+
+const SidebarNav = ({ questions, current, answers, onSelect }) => {
+  const answered = questions.filter((q) => (answers[q.qid] || "").trim()).length;
+  return (
+    <aside className="border-b border-slate-200 p-4 md:w-56 md:border-b-0 md:border-r">
+      <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Questions — {answered}/20</p>
+      <div className="mt-3 grid grid-cols-10 gap-1 md:grid-cols-5 md:gap-2">
+        {questions.map((qq, i) => (
+          <button
+            key={qq.qid}
+            data-testid={`question-nav-${qq.qid}`}
+            onClick={() => onSelect(i)}
+            className={`flex h-9 w-full items-center justify-center border text-xs font-bold transition-all duration-150 ${navButtonClass(i === current, (answers[qq.qid] || "").trim())}`}
+          >
+            {qq.qid}
+          </button>
+        ))}
+      </div>
+      <div className="mt-6 hidden space-y-2 font-mono text-xs text-slate-500 md:block">
+        <p><span className="mr-2 inline-block h-3 w-3 border border-slate-950 bg-slate-950 align-middle" />answered</p>
+        <p><span className="mr-2 inline-block h-3 w-3 border border-slate-200 bg-slate-100 align-middle" />pending</p>
+      </div>
+    </aside>
+  );
+};
+
+const QuestionPanel = ({ q, current, onNav }) => {
+  const Icon = TYPE_ICON[q.type];
+  return (
+    <section className="flex-1 border-b border-slate-200 p-6 lg:border-b-0 lg:border-r">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Icon className="h-5 w-5" strokeWidth={1.5} />
+          <span className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">{TYPE_LABEL[q.type]}</span>
+        </div>
+        <span className="font-mono text-xs text-slate-500">{q.marks} marks · {q.level}</span>
+      </div>
+      <h2 className="mt-4 font-heading text-xl font-bold tracking-tight">Q{q.qid}. {q.skill}</h2>
+      <p data-testid="question-text" className="mt-3 text-base leading-relaxed text-slate-800">{q.question}</p>
+      {q.context && (
+        <div className="mt-5 border border-slate-200 bg-slate-50 p-4">
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Environment</p>
+          <p className="mt-2 font-mono text-xs leading-relaxed text-slate-700">{q.context}</p>
+        </div>
+      )}
+      <div className="mt-8 flex gap-2">
+        <button
+          data-testid="prev-question-button"
+          disabled={current === 0}
+          onClick={() => onNav(current - 1)}
+          className="flex items-center gap-1 border border-slate-950 px-4 py-2 text-xs font-bold uppercase tracking-[0.2em] transition-all duration-150 hover:bg-slate-950 hover:text-white disabled:opacity-30"
+        >
+          <ChevronLeft className="h-4 w-4" strokeWidth={1.5} /> Prev
+        </button>
+        <button
+          data-testid="next-question-button"
+          disabled={current === 19}
+          onClick={() => onNav(current + 1)}
+          className="flex items-center gap-1 border border-slate-950 px-4 py-2 text-xs font-bold uppercase tracking-[0.2em] transition-all duration-150 hover:bg-slate-950 hover:text-white disabled:opacity-30"
+        >
+          Next <ChevronRight className="h-4 w-4" strokeWidth={1.5} />
+        </button>
+      </div>
+    </section>
+  );
+};
+
+const AnswerPanel = ({ q, value, onChange, output, running, onRun }) => {
+  const executable = q.type === "sql" || q.type === "python";
+  const isCode = executable || q.type === "dax";
+  return (
+    <section className="flex flex-1 flex-col p-6">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Your Answer</p>
+        {executable && (
+          <button
+            data-testid="run-code-button"
+            onClick={onRun}
+            disabled={running}
+            className="flex items-center gap-2 border border-slate-950 bg-white px-4 py-2 text-xs font-bold uppercase tracking-[0.2em] transition-all duration-150 hover:bg-slate-950 hover:text-white disabled:opacity-50"
+          >
+            {running ? <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.5} /> : <Play className="h-4 w-4" strokeWidth={1.5} />}
+            Run {q.type === "sql" ? "SQL" : "Python"}
+          </button>
+        )}
+      </div>
+      <textarea
+        data-testid="answer-editor"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        spellCheck={false}
+        placeholder={PLACEHOLDER[q.type]}
+        className={`mt-3 min-h-[220px] w-full flex-1 p-4 text-sm leading-relaxed ${editorClass(isCode)}`}
+      />
+      {executable && (
+        <div className="mt-4">
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Output</p>
+          <pre data-testid="execution-output" className="mt-2 max-h-52 min-h-[80px] overflow-auto border border-slate-200 bg-slate-50 p-4 font-mono text-xs leading-relaxed text-slate-800">
+            {output || "Run your code to see output here."}
+          </pre>
+        </div>
+      )}
+    </section>
+  );
+};
 
 export default function Test() {
   const { sessionId } = useParams();
@@ -82,191 +261,47 @@ export default function Test() {
     return () => clearTimeout(t);
   }, [secondsLeft, submit]);
 
-  if (!setData || !session) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-white">
-        <Loader2 className="h-8 w-8 animate-spin" strokeWidth={1.5} />
-      </div>
-    );
-  }
-
-  if (submitting) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-white px-6">
-        <Loader2 className="h-10 w-10 animate-spin" strokeWidth={1.5} />
-        <h2 className="mt-6 font-heading text-2xl font-bold tracking-tight">AI grading in progress</h2>
-        <p className="mt-2 max-w-md text-center text-sm text-slate-600">
-          Claude is evaluating all 20 answers against the official answer key. This takes 30–90 seconds.
-        </p>
-      </div>
-    );
-  }
-
-  const q = setData.questions[current];
-  const executable = q.type === "sql" || q.type === "python";
-  const codeType = q.type === "sql" || q.type === "python" || q.type === "dax";
-  const mins = Math.floor(secondsLeft / 60);
-  const secs = secondsLeft % 60;
-  const Icon = TYPE_ICON[q.type];
-  const answered = Object.keys(answers).filter((k) => (answers[k] || "").trim()).length;
-
-  const runCode = async () => {
-    const code = answers[q.qid] || "";
+  const runCode = useCallback(async () => {
+    const q = setData.questions[current];
+    const code = answersRef.current[q.qid] || "";
     if (!code.trim()) { toast.error("Write some code first"); return; }
     setRunning(true);
     try {
       let text;
       if (q.type === "sql") {
         const r = await axios.post(`${API}/execute/sql`, { sql: code });
-        if (r.data.success) {
-          const header = r.data.columns.join(" | ");
-          const rows = r.data.rows.map((row) => row.map((c) => (c === null ? "NULL" : c)).join(" | ")).join("\n");
-          text = r.data.columns.length ? `${header}\n${"-".repeat(header.length)}\n${rows}\n(${r.data.row_count} rows)` : "Statement executed (no result set)";
-        } else {
-          text = `SQL ERROR: ${r.data.error}`;
-        }
+        text = formatSqlResult(r.data);
       } else {
         const r = await axios.post(`${API}/execute/python`, { code });
-        text = r.data.error ? `ERROR: ${r.data.error}` : `${r.data.stdout || ""}${r.data.stderr ? `\nSTDERR:\n${r.data.stderr}` : ""}`.trim() || "(no output)";
+        text = formatPyResult(r.data);
       }
       setOutputs((o) => ({ ...o, [q.qid]: { text } }));
     } catch (e) {
       setOutputs((o) => ({ ...o, [q.qid]: { text: "Execution request failed" } }));
     }
     setRunning(false);
-  };
+  }, [setData, current]);
+
+  if (!setData || !session) return <LoadingScreen />;
+  if (submitting) return <GradingScreen />;
+
+  const q = setData.questions[current];
 
   return (
     <div className="flex min-h-screen flex-col bg-white">
-      <header className="sticky top-0 z-50 border-b border-slate-950 bg-white">
-        <div className="flex items-center justify-between px-4 py-3 sm:px-6">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">{setData.title}</p>
-            <p className="text-sm font-bold">{session.candidate_name}</p>
-          </div>
-          <div className="flex items-center gap-4">
-            <div data-testid="test-timer" className={`font-mono text-2xl font-bold ${secondsLeft < 300 ? "text-red-500" : "text-slate-950"}`}>
-              {String(mins).padStart(2, "0")}:{String(secs).padStart(2, "0")}
-            </div>
-            <button
-              data-testid="submit-test-button"
-              onClick={() => submit(false)}
-              className="flex items-center gap-2 bg-slate-950 px-4 py-2 text-xs font-bold uppercase tracking-[0.2em] text-white transition-all duration-150 hover:bg-slate-800"
-            >
-              <Send className="h-4 w-4" strokeWidth={1.5} /> Submit
-            </button>
-          </div>
-        </div>
-      </header>
-
+      <TestHeader setTitle={setData.title} candidateName={session.candidate_name} secondsLeft={secondsLeft} onSubmit={() => submit(false)} />
       <div className="flex flex-1 flex-col md:flex-row">
-        <aside className="border-b border-slate-200 p-4 md:w-56 md:border-b-0 md:border-r">
-          <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Questions — {answered}/20</p>
-          <div className="mt-3 grid grid-cols-10 gap-1 md:grid-cols-5 md:gap-2">
-            {setData.questions.map((qq, i) => {
-              const done = (answers[qq.qid] || "").trim();
-              return (
-                <button
-                  key={qq.qid}
-                  data-testid={`question-nav-${qq.qid}`}
-                  onClick={() => setCurrent(i)}
-                  className={`flex h-9 w-full items-center justify-center border text-xs font-bold transition-all duration-150 ${
-                    i === current
-                      ? "border-slate-950 ring-2 ring-slate-950 ring-offset-1"
-                      : done
-                      ? "border-slate-950 bg-slate-950 text-white"
-                      : "border-slate-200 bg-slate-100 text-slate-500 hover:border-slate-950"
-                  }`}
-                >
-                  {qq.qid}
-                </button>
-              );
-            })}
-          </div>
-          <div className="mt-6 hidden space-y-2 font-mono text-xs text-slate-500 md:block">
-            <p><span className="mr-2 inline-block h-3 w-3 border border-slate-950 bg-slate-950 align-middle" />answered</p>
-            <p><span className="mr-2 inline-block h-3 w-3 border border-slate-200 bg-slate-100 align-middle" />pending</p>
-          </div>
-        </aside>
-
+        <SidebarNav questions={setData.questions} current={current} answers={answers} onSelect={setCurrent} />
         <main className="flex flex-1 flex-col lg:flex-row">
-          <section className="flex-1 border-b border-slate-200 p-6 lg:border-b-0 lg:border-r">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Icon className="h-5 w-5" strokeWidth={1.5} />
-                <span className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">{TYPE_LABEL[q.type]}</span>
-              </div>
-              <span className="font-mono text-xs text-slate-500">{q.marks} marks · {q.level}</span>
-            </div>
-            <h2 className="mt-4 font-heading text-xl font-bold tracking-tight">
-              Q{q.qid}. {q.skill}
-            </h2>
-            <p data-testid="question-text" className="mt-3 text-base leading-relaxed text-slate-800">{q.question}</p>
-            {q.context && (
-              <div className="mt-5 border border-slate-200 bg-slate-50 p-4">
-                <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Environment</p>
-                <p className="mt-2 font-mono text-xs leading-relaxed text-slate-700">{q.context}</p>
-              </div>
-            )}
-            <div className="mt-8 flex gap-2">
-              <button
-                data-testid="prev-question-button"
-                disabled={current === 0}
-                onClick={() => setCurrent((c) => c - 1)}
-                className="flex items-center gap-1 border border-slate-950 px-4 py-2 text-xs font-bold uppercase tracking-[0.2em] transition-all duration-150 hover:bg-slate-950 hover:text-white disabled:opacity-30"
-              >
-                <ChevronLeft className="h-4 w-4" strokeWidth={1.5} /> Prev
-              </button>
-              <button
-                data-testid="next-question-button"
-                disabled={current === 19}
-                onClick={() => setCurrent((c) => c + 1)}
-                className="flex items-center gap-1 border border-slate-950 px-4 py-2 text-xs font-bold uppercase tracking-[0.2em] transition-all duration-150 hover:bg-slate-950 hover:text-white disabled:opacity-30"
-              >
-                Next <ChevronRight className="h-4 w-4" strokeWidth={1.5} />
-              </button>
-            </div>
-          </section>
-
-          <section className="flex flex-1 flex-col p-6">
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Your Answer</p>
-              {executable && (
-                <button
-                  data-testid="run-code-button"
-                  onClick={runCode}
-                  disabled={running}
-                  className="flex items-center gap-2 border border-slate-950 bg-white px-4 py-2 text-xs font-bold uppercase tracking-[0.2em] transition-all duration-150 hover:bg-slate-950 hover:text-white disabled:opacity-50"
-                >
-                  {running ? <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.5} /> : <Play className="h-4 w-4" strokeWidth={1.5} />}
-                  Run {q.type === "sql" ? "SQL" : "Python"}
-                </button>
-              )}
-            </div>
-            <textarea
-              data-testid="answer-editor"
-              value={answers[q.qid] || ""}
-              onChange={(e) => setAnswers((a) => ({ ...a, [q.qid]: e.target.value }))}
-              spellCheck={false}
-              placeholder={
-                q.type === "sql" ? "-- Write your SQL here, then press Run" :
-                q.type === "python" ? "# Write pandas code here, then press Run\nimport pandas as pd" :
-                q.type === "dax" ? "// Write your DAX measure here (graded by AI)" :
-                "Write your answer here..."
-              }
-              className={`mt-3 min-h-[220px] w-full flex-1 p-4 text-sm leading-relaxed ${
-                codeType ? "code-editor" : "border border-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-950"
-              }`}
-            />
-            {executable && (
-              <div className="mt-4">
-                <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Output</p>
-                <pre data-testid="execution-output" className="mt-2 max-h-52 min-h-[80px] overflow-auto border border-slate-200 bg-slate-50 p-4 font-mono text-xs leading-relaxed text-slate-800">
-                  {outputs[q.qid]?.text || "Run your code to see output here."}
-                </pre>
-              </div>
-            )}
-          </section>
+          <QuestionPanel q={q} current={current} onNav={setCurrent} />
+          <AnswerPanel
+            q={q}
+            value={answers[q.qid] || ""}
+            onChange={(v) => setAnswers((a) => ({ ...a, [q.qid]: v }))}
+            output={outputs[q.qid]?.text}
+            running={running}
+            onRun={runCode}
+          />
         </main>
       </div>
     </div>

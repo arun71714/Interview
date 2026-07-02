@@ -1,0 +1,27 @@
+{
+  "summary": "Verified the cookie-auth refactor and Test.js/History.js component split did not regress anything. Backend: 22/22 pytest cases pass, including 4 new admin auth tests (401 without cookie, cookie login sets httpOnly access_token, /auth/me + /results work with cookie, logout clears cookie, Bearer fallback works, wrong password returns 401). Frontend: /history correctly shows AdminLogin when unauthed, rejects wrong password with data-testid='admin-login-error', persists cookie across page refresh, logout returns to login form; NO auth data stored in localStorage; access_token cookie is httpOnly (not visible to JS). Full candidate flow (Landing register -> 20-question Test with timer/nav/SQL+Python execution -> Submit -> AI-graded Results with per-question feedback) completed in ~90s and TEST_UI_Refactor row appeared in admin history table with a working view-result button.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "backend/.env CORS_ORIGINS='*' combined with allow_credentials=True in server.py L379-385 is a known Starlette/FastAPI foot-gun: with wildcard, credentials mode is effectively disabled by browsers. Currently works only because frontend and backend share the same preview origin (routed by ingress '/api'), so cookies flow as same-origin. If the app is ever deployed with a separate frontend origin, cookie auth will silently break. Recommend setting CORS_ORIGINS to the explicit frontend URL.",
+    "server.py L129 sets cookie with secure=True unconditionally. Fine for the https preview URL but will break local http development. Consider deriving from an env flag.",
+    "server.py L218 BLOCKED_PY regex still uses simple word-boundary; bypass via getattr(__builtins__,'eval') or open() write remains. Non-blocking for an internal grading tool but worth noting.",
+    "History.js L162-169 logout swallows network failure silently; consider surfacing 'Logout failed' if the /auth/logout POST errors (rare, but user would think they're logged out while cookie may still be valid on some edge cache paths).",
+    "server.py has no rate limiting on /auth/login — playbook mentions brute-force lockout after 5 fails; not implemented. Acceptable for internal tool but flagged."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py (added TestAdminAuth class with 4 cases + _admin_session helper; updated TestSubmitGrading /results call to use admin session)"
+  ],
+  "success_rate": {"backend": "100% (22/22)", "frontend": "100% (all flows: admin auth, history refresh persistence, logout, candidate register, test navigation, SQL+Python execution, submit+grading, history append, view-result nav, export-csv enabled)"},
+  "test_credentials": "admin@nne.com / NNEadmin@2026 (from /app/memory/test_credentials.md, verified working)",
+  "seed_data_creation": "Created sessions: TEST_Candidate, TEST_Submit (Set A, graded via backend test), TEST_UI_Refactor (Set A, graded via UI flow). MongoDB now contains 2 graded results visible in admin history (TEST_UI_Refactor 1.5/100 FAIL, TEST_Submit 10/100 FAIL).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Cookie auth is fully working over HTTPS preview URL. Cookie is Secure+HttpOnly+SameSite=Lax. Use requests.Session() to preserve cookies in pytest; login POST returns {email, name} (NOT access_token in body — token is in cookie only). Bearer header fallback works if you extract the cookie value. /api/results now requires auth (was public in iteration_1). Grading takes ~30-60s for 20 questions in parallel batches; use 240s timeout for submit calls. Submit is idempotent — resubmitting returns the same result document.",
+  "rca of the issue": "N/A - no defects found"
+}

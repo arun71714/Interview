@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends
+from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends
 import bcrypt
 import jwt
 from dotenv import load_dotenv
@@ -86,11 +86,15 @@ def create_access_token(email: str) -> str:
 
 
 async def get_current_admin(request: Request) -> dict:
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
+    token = request.cookies.get("access_token")
+    if not token:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]
+    if not token:
         raise HTTPException(401, "Not authenticated")
     try:
-        payload = jwt.decode(auth_header[7:], os.environ["JWT_SECRET"], algorithms=[JWT_ALGORITHM])
+        payload = jwt.decode(token, os.environ["JWT_SECRET"], algorithms=[JWT_ALGORITHM])
         if payload.get("type") != "access" or payload.get("role") != "admin":
             raise HTTPException(401, "Invalid token")
         user = await db.users.find_one({"email": payload["sub"], "role": "admin"}, {"_id": 0, "password_hash": 0})
@@ -117,12 +121,20 @@ async def seed_admin():
 
 
 @api_router.post("/auth/login")
-async def admin_login(inp: LoginIn):
+async def admin_login(inp: LoginIn, response: Response):
     user = await db.users.find_one({"email": inp.email.strip().lower(), "role": "admin"})
     if not user or not verify_password(inp.password, user["password_hash"]):
         raise HTTPException(401, "Invalid email or password")
-    return {"access_token": create_access_token(user["email"]),
-            "email": user["email"], "name": user["name"]}
+    token = create_access_token(user["email"])
+    response.set_cookie(key="access_token", value=token, httponly=True, secure=True,
+                        samesite="lax", max_age=43200, path="/")
+    return {"email": user["email"], "name": user["name"]}
+
+
+@api_router.post("/auth/logout")
+async def admin_logout(response: Response):
+    response.delete_cookie("access_token", path="/")
+    return {"ok": True}
 
 
 @api_router.get("/auth/me")
@@ -222,6 +234,7 @@ async def execute_python(inp: PyIn):
             out, err = await asyncio.wait_for(proc.communicate(), timeout=15)
         except asyncio.TimeoutError:
             proc.kill()
+            await proc.communicate()
             return {"success": False, "error": "Execution timed out (15s limit)."}
         stdout = out.decode()[:8000]
         stderr = err.decode()[:4000]
@@ -267,23 +280,11 @@ async def grade_batch(set_id: str, batch: list, answers_by_qid: dict, session_id
     return json.loads(m.group(0))
 
 
-@api_router.post("/sessions/{session_id}/submit")
-async def submit_session(session_id: str, inp: SubmitIn):
-    session = await db.sessions.find_one({"id": session_id}, {"_id": 0})
-    if not session:
-        raise HTTPException(404, "Session not found")
-    existing = await db.results.find_one({"session_id": session_id}, {"_id": 0})
-    if existing:
-        return existing
-
-    qset = QUESTION_SETS[session["set_id"]]
-    questions = qset["questions"]
-    answers_by_qid = {a.qid: a for a in inp.answers}
-
+async def grade_all_answers(session_id: str, set_id: str, questions: list, answers_by_qid: dict) -> dict:
     batches = [questions[i:i + 5] for i in range(0, len(questions), 5)]
     graded = {}
     results = await asyncio.gather(
-        *[grade_batch(session["set_id"], b, answers_by_qid, session_id) for b in batches],
+        *[grade_batch(set_id, b, answers_by_qid, session_id) for b in batches],
         return_exceptions=True)
     for res, batch in zip(results, batches):
         if isinstance(res, Exception):
@@ -292,9 +293,15 @@ async def submit_session(session_id: str, inp: SubmitIn):
                 graded[q["qid"]] = {"score": 0, "feedback": "Grading failed for this question. Please regrade."}
         else:
             for item in res:
-                graded[int(item["qid"])] = {"score": min(5, max(0, float(item["score"]))),
+                score = float(item["score"])
+                if score < 0 or score > 5:
+                    logger.warning(f"Out-of-range score {score} for qid {item['qid']}")
+                graded[int(item["qid"])] = {"score": min(5, max(0, score)),
                                             "feedback": item.get("feedback", "")}
+    return graded
 
+
+def build_per_question(questions: list, graded: dict, answers_by_qid: dict):
     per_question = []
     total = 0.0
     for q in questions:
@@ -307,12 +314,30 @@ async def submit_session(session_id: str, inp: SubmitIn):
             "execution_output": (a.execution_output if a else None),
             "score": g["score"], "feedback": g["feedback"],
         })
+    return per_question, total
 
-    verdict = "FAIL"
+
+def compute_verdict(total: float, qset: dict) -> str:
     if total >= qset["strong"]:
-        verdict = "STRONG SHORTLIST"
-    elif total >= qset["cutoff"]:
-        verdict = "PASS"
+        return "STRONG SHORTLIST"
+    if total >= qset["cutoff"]:
+        return "PASS"
+    return "FAIL"
+
+
+@api_router.post("/sessions/{session_id}/submit")
+async def submit_session(session_id: str, inp: SubmitIn):
+    session = await db.sessions.find_one({"id": session_id}, {"_id": 0})
+    if not session:
+        raise HTTPException(404, "Session not found")
+    existing = await db.results.find_one({"session_id": session_id}, {"_id": 0})
+    if existing:
+        return existing
+
+    qset = QUESTION_SETS[session["set_id"]]
+    answers_by_qid = {a.qid: a for a in inp.answers}
+    graded = await grade_all_answers(session_id, session["set_id"], qset["questions"], answers_by_qid)
+    per_question, total = build_per_question(qset["questions"], graded, answers_by_qid)
 
     result = {
         "id": str(uuid.uuid4()),
@@ -327,7 +352,7 @@ async def submit_session(session_id: str, inp: SubmitIn):
         "max_marks": 100,
         "cutoff": qset["cutoff"],
         "strong": qset["strong"],
-        "verdict": verdict,
+        "verdict": compute_verdict(total, qset),
         "per_question": per_question,
     }
     await db.results.insert_one({**result})

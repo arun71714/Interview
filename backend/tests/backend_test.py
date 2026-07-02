@@ -7,6 +7,73 @@ import requests
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://multi-lang-test-8.preview.emergentagent.com").rstrip("/")
 API = f"{BASE_URL}/api"
 
+ADMIN_EMAIL = "admin@nne.com"
+ADMIN_PASSWORD = "NNEadmin@2026"
+
+
+# ---------- Admin Auth (cookie + Bearer) ----------
+class TestAdminAuth:
+    def test_results_requires_auth(self):
+        r = requests.get(f"{API}/results", timeout=30)
+        assert r.status_code == 401
+
+    def test_wrong_password(self):
+        r = requests.post(f"{API}/auth/login",
+                          json={"email": ADMIN_EMAIL, "password": "wrong-pass"}, timeout=30)
+        assert r.status_code == 401
+
+    def test_cookie_login_flow(self):
+        s = requests.Session()
+        r = s.post(f"{API}/auth/login", json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD}, timeout=30)
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["email"] == ADMIN_EMAIL
+        assert "access_token" in s.cookies, f"Cookie not set. Cookies: {s.cookies.keys()}"
+
+        # /auth/me with cookie
+        me = s.get(f"{API}/auth/me", timeout=30)
+        assert me.status_code == 200
+        assert me.json()["email"] == ADMIN_EMAIL
+        # No password hash leaked
+        assert "password_hash" not in me.json()
+
+        # /results with cookie
+        rr = s.get(f"{API}/results", timeout=30)
+        assert rr.status_code == 200
+        assert isinstance(rr.json(), list)
+
+        # Logout clears cookie
+        lo = s.post(f"{API}/auth/logout", timeout=30)
+        assert lo.status_code == 200
+
+        # Subsequent /results is 401
+        rr2 = s.get(f"{API}/results", timeout=30)
+        assert rr2.status_code == 401
+
+    def test_bearer_header_fallback(self):
+        # Login to obtain the token from cookie, then use it as Bearer header on a bare session
+        s = requests.Session()
+        r = s.post(f"{API}/auth/login", json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD}, timeout=30)
+        assert r.status_code == 200
+        token = s.cookies.get("access_token")
+        assert token, "No access_token cookie set on login"
+
+        # New session, no cookie, only Bearer header
+        headers = {"Authorization": f"Bearer {token}"}
+        me = requests.get(f"{API}/auth/me", headers=headers, timeout=30)
+        assert me.status_code == 200
+        assert me.json()["email"] == ADMIN_EMAIL
+
+        rr = requests.get(f"{API}/results", headers=headers, timeout=30)
+        assert rr.status_code == 200
+
+
+def _admin_session():
+    s = requests.Session()
+    r = s.post(f"{API}/auth/login", json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD}, timeout=30)
+    assert r.status_code == 200, f"Admin login failed: {r.text}"
+    return s
+
 
 # ---------- Sets & Questions ----------
 class TestSets:
@@ -181,8 +248,9 @@ class TestSubmitGrading:
         assert r2.json()["id"] == result["id"]
         assert r2.json()["total"] == result["total"]
 
-        # History without per_question
-        r3 = requests.get(f"{API}/results", timeout=30)
+        # History without per_question (now requires admin auth)
+        admin = _admin_session()
+        r3 = admin.get(f"{API}/results", timeout=30)
         assert r3.status_code == 200
         hist = r3.json()
         assert isinstance(hist, list)

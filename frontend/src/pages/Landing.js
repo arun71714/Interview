@@ -6,6 +6,42 @@ import { Database, Code2, Clock, ArrowRight, History as HistoryIcon } from "luci
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
+const FEATURES = [
+  { icon: Database, label: "Live SQL Runner", sub: "SQLite engine" },
+  { icon: Code2, label: "Python Sandbox", sub: "pandas ready" },
+  { icon: Clock, label: "30 Minutes", sub: "20 questions" },
+];
+
+const DEFAULT_SETS = [
+  { set_id: "A", title: "Set A — Advanced Data Analyst", cutoff: 65, strong: 75 },
+  { set_id: "B", title: "Set B — Senior Data Analyst", cutoff: 75, strong: 85 },
+];
+
+const SetSelector = ({ sets, selected, onSelect }) => (
+  <div className="mt-2 grid grid-cols-1 gap-3">
+    {sets.map((s) => (
+      <button
+        key={s.set_id}
+        data-testid={`select-set-${s.set_id}`}
+        onClick={() => onSelect(s.set_id)}
+        className={`flex items-center justify-between border px-4 py-3 text-left transition-all duration-150 ${
+          selected === s.set_id
+            ? "border-slate-950 bg-slate-950 text-white"
+            : "border-slate-300 hover:border-slate-950"
+        }`}
+      >
+        <div>
+          <p className="text-sm font-bold">{s.title}</p>
+          <p className={`font-mono text-xs ${selected === s.set_id ? "text-slate-300" : "text-slate-500"}`}>
+            cut-off {s.cutoff}/100 · strong {s.strong}+
+          </p>
+        </div>
+        <div className={`h-3 w-3 border ${selected === s.set_id ? "border-white bg-white" : "border-slate-400"}`} />
+      </button>
+    ))}
+  </div>
+);
+
 export default function Landing() {
   const navigate = useNavigate();
   const [sets, setSets] = useState([]);
@@ -62,12 +98,8 @@ export default function Landing() {
             </p>
 
             <div className="mt-10 grid grid-cols-3 border border-slate-200">
-              {[
-                { icon: Database, label: "Live SQL Runner", sub: "SQLite engine" },
-                { icon: Code2, label: "Python Sandbox", sub: "pandas ready" },
-                { icon: Clock, label: "30 Minutes", sub: "20 questions" },
-              ].map((f, i) => (
-                <div key={i} className={`p-4 ${i < 2 ? "border-r border-slate-200" : ""}`}>
+              {FEATURES.map((f, i) => (
+                <div key={f.label} className={`p-4 ${i < 2 ? "border-r border-slate-200" : ""}`}>
                   <f.icon className="h-5 w-5" strokeWidth={1.5} />
                   <p className="mt-3 text-sm font-bold">{f.label}</p>
                   <p className="font-mono text-xs text-slate-500">{f.sub}</p>
@@ -112,31 +144,7 @@ export default function Landing() {
               </div>
               <div>
                 <label className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Question Set</label>
-                <div className="mt-2 grid grid-cols-1 gap-3">
-                  {(sets.length ? sets : [
-                    { set_id: "A", title: "Set A — Advanced Data Analyst", cutoff: 65, strong: 75 },
-                    { set_id: "B", title: "Set B — Senior Data Analyst", cutoff: 75, strong: 85 },
-                  ]).map((s) => (
-                    <button
-                      key={s.set_id}
-                      data-testid={`select-set-${s.set_id}`}
-                      onClick={() => setSetId(s.set_id)}
-                      className={`flex items-center justify-between border px-4 py-3 text-left transition-all duration-150 ${
-                        setId === s.set_id
-                          ? "border-slate-950 bg-slate-950 text-white"
-                          : "border-slate-300 hover:border-slate-950"
-                      }`}
-                    >
-                      <div>
-                        <p className="text-sm font-bold">{s.title}</p>
-                        <p className={`font-mono text-xs ${setId === s.set_id ? "text-slate-300" : "text-slate-500"}`}>
-                          cut-off {s.cutoff}/100 · strong {s.strong}+
-                        </p>
-                      </div>
-                      <div className={`h-3 w-3 border ${setId === s.set_id ? "border-white bg-white" : "border-slate-400"}`} />
-                    </button>
-                  ))}
-                </div>
+                <SetSelector sets={sets.length ? sets : DEFAULT_SETS} selected={setId} onSelect={setSetId} />
               </div>
               <button
                 data-testid="start-test-button"

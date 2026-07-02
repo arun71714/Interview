@@ -11,6 +11,18 @@ const VERDICT_STYLE = {
   FAIL: "bg-red-500 text-white",
 };
 
+function verdictIcon(verdict) {
+  if (verdict === "FAIL") return <XCircle className="h-4 w-4" strokeWidth={1.5} />;
+  if (verdict === "PASS") return <CheckCircle2 className="h-4 w-4" strokeWidth={1.5} />;
+  return <Award className="h-4 w-4" strokeWidth={1.5} />;
+}
+
+function scoreBadgeClass(score) {
+  if (score >= 4) return "bg-emerald-500 text-white";
+  if (score >= 2.5) return "bg-amber-500 text-white";
+  return "bg-red-500 text-white";
+}
+
 export default function Results() {
   const { sessionId } = useParams();
   const navigate = useNavigate();
@@ -72,7 +84,7 @@ export default function Results() {
             <div className="flex flex-col justify-center p-6">
               <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Verdict</p>
               <div data-testid="verdict-badge" className={`mt-3 inline-flex w-fit items-center gap-2 px-4 py-2 text-sm font-bold uppercase tracking-[0.2em] ${VERDICT_STYLE[result.verdict]}`}>
-                {result.verdict === "FAIL" ? <XCircle className="h-4 w-4" strokeWidth={1.5} /> : result.verdict === "PASS" ? <CheckCircle2 className="h-4 w-4" strokeWidth={1.5} /> : <Award className="h-4 w-4" strokeWidth={1.5} />}
+                {verdictIcon(result.verdict)}
                 {result.verdict}
               </div>
             </div>
@@ -89,9 +101,7 @@ export default function Results() {
                 className="flex w-full items-center justify-between px-5 py-4 text-left transition-all duration-150 hover:bg-slate-50"
               >
                 <div className="flex items-center gap-4">
-                  <span className={`flex h-9 w-12 items-center justify-center font-mono text-sm font-bold ${
-                    q.score >= 4 ? "bg-emerald-500 text-white" : q.score >= 2.5 ? "bg-amber-500 text-white" : "bg-red-500 text-white"
-                  }`}>
+                  <span className={`flex h-9 w-12 items-center justify-center font-mono text-sm font-bold ${scoreBadgeClass(q.score)}`}>
                     {q.score}/5
                   </span>
                   <div>
