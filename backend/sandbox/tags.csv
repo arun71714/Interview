@@ -1,0 +1,11 @@
+tag_id,tag_name,discipline,unit,description,last_update
+1,ft-1001 ,Process,kg/h,Flow transmitter feed line,2024-01-05
+2,FT-1001,Process,kg/h,Flow transmitter feed line updated,2024-03-10
+3,PT-2001,Process,,Pressure transmitter,2024-02-01
+4,tt-3001,Mechanical,degC,Temperature transmitter,2024-01-20
+5,TT-3001,Mechanical,degC,,2024-04-02
+6,LT-4001,Mechanical, ,Level transmitter,2024-02-14
+7,XV-5001,Electrical,-,Shutoff valve,2024-03-01
+8,PT-2002,Electrical,bar,,2024-03-15
+9,FT-1002,Process,kg/h,Flow transmitter recycle,2024-01-30
+10,ft-1002,Process,kg/h,Flow transmitter recycle rev2,2024-05-01
