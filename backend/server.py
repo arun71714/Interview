@@ -1,4 +1,6 @@
-from fastapi import FastAPI, APIRouter, HTTPException
+from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends
+import bcrypt
+import jwt
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -57,6 +59,75 @@ class SqlIn(BaseModel):
 
 class PyIn(BaseModel):
     code: str
+
+
+# ---------- Admin auth ----------
+JWT_ALGORITHM = "HS256"
+
+
+class LoginIn(BaseModel):
+    email: str
+    password: str
+
+
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def verify_password(plain: str, hashed: str) -> bool:
+    return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+
+
+def create_access_token(email: str) -> str:
+    from datetime import timedelta
+    payload = {"sub": email, "type": "access", "role": "admin",
+               "exp": datetime.now(timezone.utc) + timedelta(hours=12)}
+    return jwt.encode(payload, os.environ["JWT_SECRET"], algorithm=JWT_ALGORITHM)
+
+
+async def get_current_admin(request: Request) -> dict:
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(401, "Not authenticated")
+    try:
+        payload = jwt.decode(auth_header[7:], os.environ["JWT_SECRET"], algorithms=[JWT_ALGORITHM])
+        if payload.get("type") != "access" or payload.get("role") != "admin":
+            raise HTTPException(401, "Invalid token")
+        user = await db.users.find_one({"email": payload["sub"], "role": "admin"}, {"_id": 0, "password_hash": 0})
+        if not user:
+            raise HTTPException(401, "User not found")
+        return user
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(401, "Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(401, "Invalid token")
+
+
+@app.on_event("startup")
+async def seed_admin():
+    email = os.environ["ADMIN_EMAIL"].lower()
+    password = os.environ["ADMIN_PASSWORD"]
+    existing = await db.users.find_one({"email": email})
+    if existing is None:
+        await db.users.insert_one({"email": email, "password_hash": hash_password(password),
+                                   "name": "Admin", "role": "admin",
+                                   "created_at": datetime.now(timezone.utc).isoformat()})
+    elif not verify_password(password, existing["password_hash"]):
+        await db.users.update_one({"email": email}, {"$set": {"password_hash": hash_password(password)}})
+
+
+@api_router.post("/auth/login")
+async def admin_login(inp: LoginIn):
+    user = await db.users.find_one({"email": inp.email.strip().lower(), "role": "admin"})
+    if not user or not verify_password(inp.password, user["password_hash"]):
+        raise HTTPException(401, "Invalid email or password")
+    return {"access_token": create_access_token(user["email"]),
+            "email": user["email"], "name": user["name"]}
+
+
+@api_router.get("/auth/me")
+async def auth_me(admin: dict = Depends(get_current_admin)):
+    return admin
 
 
 # ---------- Question endpoints ----------
@@ -265,7 +336,7 @@ async def submit_session(session_id: str, inp: SubmitIn):
 
 
 @api_router.get("/results")
-async def list_results():
+async def list_results(admin: dict = Depends(get_current_admin)):
     docs = await db.results.find({}, {"_id": 0, "per_question": 0}).sort("submitted_at", -1).to_list(500)
     return docs
 

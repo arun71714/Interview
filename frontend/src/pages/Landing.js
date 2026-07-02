@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { toast } from "sonner";
-import { Terminal, Database, Code2, Clock, ArrowRight, History as HistoryIcon } from "lucide-react";
+import { Database, Code2, Clock, ArrowRight, History as HistoryIcon } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -37,10 +37,7 @@ export default function Landing() {
     <div className="min-h-screen bg-white">
       <header className="sticky top-0 z-50 border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-3">
-            <Terminal className="h-6 w-6" strokeWidth={1.5} />
-            <span className="font-heading text-lg font-black tracking-tighter">NNE ASSESSMENT LAB</span>
-          </div>
+          <span className="font-heading text-lg font-black tracking-tighter">NNE ASSESSMENT LAB</span>
           <button
             data-testid="nav-history-link"
             onClick={() => navigate("/history")}

@@ -22,10 +22,11 @@
 - Live SQL and Python execution with output panel; DAX/text AI-graded only
 - Submit → AI grading → per-question scores/feedback, total /100, verdict (FAIL / PASS / STRONG SHORTLIST)
 - Results history table + client-side CSV export
+- Admin JWT login (bcrypt + PyJWT, admin seeded from .env) protecting /history page and GET /api/results; logo icon removed from header (2026-07)
 - Tested: iteration_1 — 100% backend (18/18), 100% frontend flows
 
 ## Backlog
-- P1: Regrade button for questions where grading failed; admin auth to protect /history
+- P1: Regrade button for questions where grading failed
 - P2: Question-level flagging for review; tab-switch/anti-cheat detection; email results to interviewer
 - P2: Harden Python sandbox (open/getattr bypass possible — acceptable for internal tool)
 
