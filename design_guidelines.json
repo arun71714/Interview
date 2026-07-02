@@ -1,0 +1,99 @@
+{
+  "theme": "Light",
+  "archetype": "4 (Swiss & High-Contrast)",
+  "design_philosophy": {
+    "vibe": "Objective, rigid, functional. The interface should feel like an elite command center or a high-end code editor.",
+    "rules": [
+      "95% monochrome interface. Color exists ONLY to guide action (e.g., Red for timer/errors, Green for pass/success).",
+      "Control Room Grid: Dense, compact spacing for the test interface to maximize code and question visibility.",
+      "No full-screen gradients. Use solid stark colors and 1px borders to define structure.",
+      "Optical clarity over decorative styling. Remove unnecessary shadows and rounded corners."
+    ]
+  },
+  "typography": {
+    "fonts": {
+      "headings": "Chivo",
+      "body": "IBM Plex Sans",
+      "mono": "JetBrains Mono"
+    },
+    "hierarchy": {
+      "h1": "text-4xl sm:text-5xl tracking-tighter font-black text-slate-950",
+      "h2": "text-2xl sm:text-3xl tracking-tight font-bold text-slate-900",
+      "h3": "text-xl sm:text-2xl font-semibold text-slate-900",
+      "body": "text-base leading-relaxed text-slate-800",
+      "code": "font-mono text-sm leading-relaxed text-slate-200",
+      "labels": "text-xs tracking-[0.2em] uppercase font-bold text-slate-500"
+    }
+  },
+  "colors": {
+    "background": "#FFFFFF",
+    "foreground": "#0A0A0A",
+    "surface": "#F9FAFB",
+    "border": "#E5E7EB",
+    "primary": "#0A0A0A",
+    "primary_foreground": "#FFFFFF",
+    "accent_red": "#EF4444",
+    "accent_green": "#10B981",
+    "accent_yellow": "#F59E0B",
+    "editor_bg": "#0A0A0A",
+    "editor_fg": "#F8F9FA"
+  },
+  "layout_and_spacing": {
+    "container_padding": "p-6 sm:p-8 md:p-12",
+    "gap_strategy": "gap-4 or gap-6 for tight developer tools density",
+    "border_radius": "rounded-none",
+    "grid_structure": "Grid Borders (The 'Technical' Look). Use pure border-collapse style layout for the assessment screen. Example: Sidebar 20%, Question Prompt 40%, Code Editor 40%. All separated by stark 1px borders."
+  },
+  "components": {
+    "buttons": "Flat, sharp corners (rounded-none). Primary is black with white text. Hover states invert or translate slightly. Always set explicit hover text color.",
+    "inputs": "Flat, 1px border border-slate-300 bg-transparent rounded-none. Focus state: ring-2 ring-slate-950 outline-none.",
+    "cards": "border border-slate-200 bg-white shadow-none rounded-none. High-contrast text.",
+    "code_editor": "Use JetBrains Mono. The code editor pane should have a dark background (#0A0A0A) with light text to mimic professional IDEs and create stark contrast against the light theme UI.",
+    "timer": "Monospace font (JetBrains Mono), text-2xl font-bold. Turns red (text-red-500) when under 5 minutes.",
+    "question_navigator": "Grid of small square buttons (rounded-none) inside a sidebar. Completed = Black fill/White text, Current = Ringed/Bordered, Unanswered = Gray 100 fill.",
+    "tables": "Used for Results history. Dense padding, 1px borders between rows, uppercase headers with tight tracking."
+  },
+  "media": {
+    "images": [
+      {
+        "category": "landing_background",
+        "url": "https://images.unsplash.com/photo-1532456745301-b2c645d8b80d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1OTV8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMG1pbmltYWwlMjBnZW9tZXRyaWMlMjBhcmNoaXRlY3R1cmUlMjB3aGl0ZXxlbnwwfHx8fDE3ODI5Nzk2Nzh8MA&ixlib=rb-4.1.0&q=85",
+        "description": "White concrete building facade pattern - minimal geometric structure."
+      },
+      {
+        "category": "abstract_code_visual",
+        "url": "https://images.unsplash.com/photo-1461749280684-dccba630e2f6?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1MTN8MHwxfHNlYXJjaHwxfHxkYXRhJTIwYW5hbHlzdCUyMGNvbXB1dGVyJTIwY29kZSUyMHByb2Zlc3Npb25hbHxlbnwwfHx8fDE3ODI5Nzk2Nzl8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Monitor showing programming code, used for landing page context or placeholders."
+      }
+    ],
+    "icons": {
+      "library": "lucide-react",
+      "style": "Minimal, 1.5px stroke weight, sharp, no fill unless active."
+    }
+  },
+  "motion_and_interactions": {
+    "hover": "Explicit text color changes on hover (e.g., hover:bg-slate-900 hover:text-white). Use 1px sharp borders for hover interactions.",
+    "focus": "High contrast ring. `focus:ring-2 focus:ring-slate-950 focus:outline-none`",
+    "transitions": "Fast and snappy. `transition-all duration-150 ease-out`. Avoid sluggish animations in developer tools to prioritize perceived performance."
+  },
+  "testing_attributes": {
+    "rule": "All interactive elements MUST include data-testid attributes.",
+    "examples": [
+      "data-testid='run-code-button'",
+      "data-testid='submit-test-button'",
+      "data-testid='question-nav-5'",
+      "data-testid='registration-form-submit'"
+    ]
+  },
+  "instructions_to_main_agent": [
+    "Strictly follow the high-contrast monochromatic Swiss design. Avoid rounded corners; override all Shadcn components to use `rounded-none` for a sharp, technical aesthetic.",
+    "Ensure all generated components use .js (React/JSX) and not .tsx files.",
+    "The test screen layout should be dense: Sidebar on the left for navigation, Question prompt in the top-middle, Code editor in the bottom-middle, and Output panel on the right or below the editor.",
+    "Use JetBrains Mono for all code inputs, outputs, and the timer.",
+    "The header must be highly visible and sticky with z-50.",
+    "Do NOT use placeholder images from dummyimage.com. Use the provided Unsplash URLs.",
+    "Apply `data-testid` to all forms, buttons, and navigation elements.",
+    "Implement Shadcn UI but remove default soft shadows (`shadow-none`) to maintain flat, brutalist clarity.",
+    "Add 'lucide-react' for icons if not already present in package.json."
+  ]
+}
