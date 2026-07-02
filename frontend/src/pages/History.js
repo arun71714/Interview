@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
-import { Loader2, Download, Home, Lock, LogOut } from "lucide-react";
+import { Loader2, Download, Home, Lock, LogOut, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -82,13 +83,13 @@ const AdminLogin = ({ onLogin }) => {
   );
 };
 
-const ResultsTable = ({ results, onView }) => (
+const ResultsTable = ({ results, onView, onDelete }) => (
   <div className="mt-6 overflow-x-auto border border-slate-200">
     <table className="w-full text-sm" data-testid="results-table">
       <thead>
         <tr className="border-b border-slate-950 bg-slate-50 text-left">
-          {["Candidate", "Email", "Set", "Score", "Verdict", "Submitted", ""].map((h, idx) => (
-            <th key={h || `col-${idx}`} className="px-4 py-3 text-xs font-bold uppercase tracking-[0.2em] text-slate-500">{h}</th>
+          {["Candidate", "Email", "Set", "Score", "Verdict", "Submitted", "Actions"].map((h) => (
+            <th key={h} className="px-4 py-3 text-xs font-bold uppercase tracking-[0.2em] text-slate-500">{h}</th>
           ))}
         </tr>
       </thead>
@@ -104,13 +105,22 @@ const ResultsTable = ({ results, onView }) => (
             </td>
             <td className="px-4 py-3 font-mono text-xs text-slate-500">{new Date(r.submitted_at).toLocaleString()}</td>
             <td className="px-4 py-3">
-              <button
-                data-testid={`view-result-${r.session_id}`}
-                onClick={() => onView(r.session_id)}
-                className="border border-slate-950 px-3 py-1 text-xs font-bold uppercase tracking-wider transition-all duration-150 hover:bg-slate-950 hover:text-white"
-              >
-                View
-              </button>
+              <div className="flex gap-2">
+                <button
+                  data-testid={`view-result-${r.session_id}`}
+                  onClick={() => onView(r.session_id)}
+                  className="border border-slate-950 px-3 py-1 text-xs font-bold uppercase tracking-wider transition-all duration-150 hover:bg-slate-950 hover:text-white"
+                >
+                  View
+                </button>
+                <button
+                  data-testid={`delete-result-${r.session_id}`}
+                  onClick={() => onDelete(r)}
+                  className="border border-red-500 px-3 py-1 text-xs font-bold uppercase tracking-wider text-red-500 transition-all duration-150 hover:bg-red-500 hover:text-white"
+                >
+                  <Trash2 className="h-3.5 w-3.5" strokeWidth={1.5} />
+                </button>
+              </div>
             </td>
           </tr>
         ))}
@@ -168,6 +178,28 @@ export default function History() {
     }
   };
 
+  const deleteResult = async (r) => {
+    if (!window.confirm(`Delete result of "${r.candidate_name}" (${r.total}/${r.max_marks})? This cannot be undone.`)) return;
+    try {
+      await axios.delete(`${API}/results/${r.id}`, { withCredentials: true });
+      toast.success("Result deleted");
+      fetchResults();
+    } catch (e) {
+      toast.error("Delete failed");
+    }
+  };
+
+  const clearAll = async () => {
+    if (!window.confirm(`Delete ALL ${results.length} results? This cannot be undone.`)) return;
+    try {
+      const r = await axios.delete(`${API}/results`, { withCredentials: true });
+      toast.success(`Cleared ${r.data.deleted} results`);
+      fetchResults();
+    } catch (e) {
+      toast.error("Clear failed");
+    }
+  };
+
   const renderBody = () => {
     if (authed === null) {
       return <div className="mt-16 flex justify-center"><Loader2 className="h-8 w-8 animate-spin" strokeWidth={1.5} /></div>;
@@ -180,7 +212,7 @@ export default function History() {
         <h1 className="font-heading text-3xl font-black tracking-tighter">Results History</h1>
         {!results && <div className="mt-10 flex justify-center"><Loader2 className="h-8 w-8 animate-spin" strokeWidth={1.5} /></div>}
         {results && results.length === 0 && <p className="mt-6 text-sm text-slate-600">No candidates have completed a test yet.</p>}
-        {results && results.length > 0 && <ResultsTable results={results} onView={(sid) => navigate(`/results/${sid}`)} />}
+        {results && results.length > 0 && <ResultsTable results={results} onView={(sid) => navigate(`/results/${sid}`)} onDelete={deleteResult} />}
       </>
     );
   };
@@ -193,6 +225,14 @@ export default function History() {
           <div className="flex gap-2">
             {authed === true && (
               <>
+                <button
+                  data-testid="clear-history-button"
+                  onClick={clearAll}
+                  disabled={!results?.length}
+                  className="flex items-center gap-2 border border-red-500 px-4 py-2 text-xs font-bold uppercase tracking-[0.2em] text-red-500 transition-all duration-150 hover:bg-red-500 hover:text-white disabled:opacity-30"
+                >
+                  <Trash2 className="h-4 w-4" strokeWidth={1.5} /> Clear All
+                </button>
                 <button
                   data-testid="export-csv-button"
                   onClick={() => exportResultsCsv(results)}

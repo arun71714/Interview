@@ -366,6 +366,25 @@ async def list_results(admin: dict = Depends(get_current_admin)):
     return docs
 
 
+@api_router.delete("/results/{result_id}")
+async def delete_result(result_id: str, admin: dict = Depends(get_current_admin)):
+    doc = await db.results.find_one({"id": result_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Result not found")
+    await db.results.delete_one({"id": result_id})
+    await db.sessions.delete_one({"id": doc["session_id"]})
+    return {"deleted": 1}
+
+
+@api_router.delete("/results")
+async def clear_results(admin: dict = Depends(get_current_admin)):
+    session_ids = [d["session_id"] async for d in db.results.find({}, {"_id": 0, "session_id": 1})]
+    res = await db.results.delete_many({})
+    if session_ids:
+        await db.sessions.delete_many({"id": {"$in": session_ids}})
+    return {"deleted": res.deleted_count}
+
+
 @api_router.get("/results/session/{session_id}")
 async def get_result_by_session(session_id: str):
     doc = await db.results.find_one({"session_id": session_id}, {"_id": 0})
